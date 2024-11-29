@@ -3,16 +3,66 @@
 // @namespace   Violentmonkey Scripts
 // @match       https://civitai.com/models
 // @grant       GM_registerMenuCommand
+// @grant       GM_addStyle
 // @run-at      document-idle
-// @version     1.1.0
+// @version     1.2.0
 // @license     MIT
 // @updateURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // ==/UserScript==
 
 const LOCAL_STORAGE_KEY = 'bookmarks';
 const LOAD_NEXT_PAGE = 10;
-const BOOKMARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="tomato"><!--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M0 48V487.7C0 501.1 10.9 512 24.3 512c5 0 9.9-1.5 14-4.4L192 400 345.7 507.6c4.1 2.9 9 4.4 14 4.4c13.4 0 24.3-10.9 24.3-24.3V48c0-26.5-21.5-48-48-48H48C21.5 0 0 21.5 0 48z"/></svg>';
+const BOOKMARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor"><!--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M0 48V487.7C0 501.1 10.9 512 24.3 512c5 0 9.9-1.5 14-4.4L192 400 345.7 507.6c4.1 2.9 9 4.4 14 4.4c13.4 0 24.3-10.9 24.3-24.3V48c0-26.5-21.5-48-48-48H48C21.5 0 0 21.5 0 48z"/></svg>';
 const BOOKMARK_CLASSNAME = 'bookmarked';
+const JUMP_TO_BOOKMARK_BUTTON_ID_NAME = 'jump-to-bookmark';
+
+let isJumpToBookmarkButtonAlreadyShowed = false;
+
+GM_addStyle(`
+@keyframes fadein {
+  0% {
+    background-color: gold;
+    opacity: 0;
+  }
+  100% {
+    background-color: coral;
+    opacity: 1;
+  }
+}
+
+.bookmarked {
+  border: 6px solid coral;
+}
+
+.bookmark-icon {
+  position:absolute;
+  right: 30px;
+  top: -5px;
+  height: 60px;
+  width: 24px;
+  color: coral;
+  z-index: 999;
+}
+
+.scroll-to-bookmark-button {
+  display: flex;
+  gap: 0.2rem;
+  align-items: center;
+  position: fixed;
+  bottom: 30px;
+  right: 60px;
+  color: #EFEFEF; 
+  background-color: coral;
+  padding: 0.5rem 0.65rem;
+  border-radius: 2rem;
+  border: 3px solid #EFEFEF;
+  animation: 0.2s ease-in-out 1 fadein;
+  z-index: 100;
+}`)
+
+function $(selector) {
+  return document.querySelector(selector)
+}
 
 function $$(selector) {
   return document.querySelectorAll(selector)
@@ -34,7 +84,6 @@ function addAttribute(elem, key, value) {
 function createBookmarkIcon() {
   const div = document.createElement('div');
   div.innerHTML = BOOKMARK_SVG;
-  div.setAttribute('style', "position:absolute; right: 30px; top: -5px; height: 100px; width: 40px; z-index: 999;");
   return div;
 }
 
@@ -57,8 +106,14 @@ async function scrollToTheBookmark(retry = 1) {
   }
 
   if (retry > LOAD_NEXT_PAGE) {
+    console.info('bookmarked models are NOT found.')
     localStorage.removeItem(LOCAL_STORAGE_KEY);
     return;
+  }
+
+  if ($(`.${BOOKMARK_CLASSNAME}`)) {
+    forceMoveToBookmark()
+    return
   }
 
   const models = getModels();
@@ -77,12 +132,14 @@ async function scrollToTheBookmark(retry = 1) {
   }
 
 
-  addAttribute(bookmarkedModel, 'style', 'border: 10px solid tomato;')
-  bookmarkedModel.appendChild(createBookmarkIcon());
+  const icon = createBookmarkIcon()
+  icon.classList.add('bookmark-icon')
+
+  bookmarkedModel.classList.add('bookmarked')
+  bookmarkedModel.appendChild(icon);
   bookmarkedModel.classList.add(BOOKMARK_CLASSNAME);
   bookmarkedModel.scrollIntoView({ behavior: 'smooth' });
 
-  saveBookmark();
   console.info('moved to the last bookmark');
 
   return;
@@ -117,8 +174,59 @@ async function waitForLoadingComplete(retry = 1) {
 }
 
 function forceMoveToBookmark() {
-  $$(`.${BOOKMARK_CLASSNAME}`)[0].scrollIntoView({ behavior: 'smooth' });
+  $(`.${BOOKMARK_CLASSNAME}`).scrollIntoView({ behavior: 'smooth' });
 }
+
+function hideScrollToBookmarkButton() {
+  const button = $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`);
+  if (ifBookmarkIsInView() && button) {
+    button.remove();
+  }
+}
+
+function showScrollToBookmarkButton() {
+  if (ifBookmarkIsInView()) {
+    return;
+  }
+  if ($(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`)) {
+    return;
+  }
+
+  const icon = createBookmarkIcon();
+  icon.setAttribute('style', 'width: 12px;')
+
+  const button = document.createElement('button');
+  button.id = JUMP_TO_BOOKMARK_BUTTON_ID_NAME;
+  button.classList.add('scroll-to-bookmark-button')
+  if (!isJumpToBookmarkButtonAlreadyShowed) {
+    button.innerHTML = `<p>ブックマークまで移動</p>`;
+  }
+  button.prepend(icon)
+  button.addEventListener('click', () => {
+    forceMoveToBookmark();
+    button.remove();
+  });
+
+  isJumpToBookmarkButtonAlreadyShowed = true;
+  $('body').appendChild(button);
+}
+
+function ifBookmarkIsInView() {
+  const bookmarkedModel = $(`.${BOOKMARK_CLASSNAME}`);
+  if (!bookmarkedModel) {
+    return false;
+  }
+
+  const innerHeight = window.innerHeight;
+  const { top, bottom } = bookmarkedElement.getBoundingClientRect();
+
+  if ((top >= 0 && top <= innerHeight) || (bottom >= 0 && bottom <= innerHeight)) {
+    return true;
+  }
+
+  return false;
+}
+
 
 async function main() {
   if (! await isSortByNewest()) {
@@ -127,10 +235,16 @@ async function main() {
   }
   await waitForLoadingComplete();
   await scrollToTheBookmark();
+  saveBookmark();
 
   // register a menu command
   GM_registerMenuCommand('ブックマークまで移動', forceMoveToBookmark);
+  // add a jump to bookmark button
+  window.addEventListener('focus', showScrollToBookmarkButton)
 
+  if (ifBookmarkIsInView()) {
+    isJumpToBookmarkButtonAlreadyShowed = true
+  }
 }
 
 main()
