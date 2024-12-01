@@ -19,23 +19,10 @@ const BOOKMARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 5
 const BOOKMARK_CLASSNAME = 'bookmarked';
 const JUMP_TO_BOOKMARK_BUTTON_ID_NAME = 'jump-to-bookmark';
 
-// ブックマークが一度でも画面に表示されたかどうか
-let isBookmarkAlreadyShown = false;
 // トグル状態を保存する変数（デフォルト: false）
 let isHideEarlyAccessEnabled = GM_getValue("isHideEarlyAccessEnabled", false);
 
 GM_addStyle(`
-@keyframes fadein {
-  0% {
-    background-color: gold;
-    opacity: 0;
-  }
-  100% {
-    background-color: coral;
-    opacity: 1;
-  }
-}
-
 .bookmarked {
   border: 6px solid coral;
 }
@@ -62,7 +49,6 @@ GM_addStyle(`
   padding: 0.5rem 2.5rem 0.5rem 0.8rem;
   border-radius: 2rem;
   border: 2px solid #EFEFEF;
-  animation: 0.2s ease-in-out 1 fadein ;
   z-index: 100;
   transition: all 0.2s ease-out;
 }
@@ -113,7 +99,7 @@ function getModels() {
   return Array.from(document.querySelectorAll('a[href^="/models/"]')).filter(x => !x.innerText.includes('Early Access'));
 }
 
-async function scrollToTheBookmark(retry = 1) {
+async function initialScrollToTheBookmark(retry = 1) {
   const bookmarks = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
 
   if (!bookmarks) {
@@ -143,7 +129,7 @@ async function scrollToTheBookmark(retry = 1) {
     oldestModel.scrollIntoView();
 
     await sleep(1000);
-    return await scrollToTheBookmark(retry + 1);
+    return await initialScrollToTheBookmark(retry + 1);
   }
 
 
@@ -154,6 +140,12 @@ async function scrollToTheBookmark(retry = 1) {
   bookmarkedModel.appendChild(icon);
   bookmarkedModel.classList.add(BOOKMARK_CLASSNAME);
   bookmarkedModel.scrollIntoView({ behavior: 'smooth' });
+  setTimeout(() => {
+    if (ifBookmarkIsInView()) {
+      const button = $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`);
+      button?.classList.remove('active')
+    }
+  }, 500)
 
   console.info('moved to the last bookmark');
 
@@ -203,9 +195,7 @@ function addScrollToBookmarkButton() {
   const button = document.createElement('button');
   button.id = JUMP_TO_BOOKMARK_BUTTON_ID_NAME;
   button.classList.add('scroll-to-bookmark-button')
-  if (!isBookmarkAlreadyShown) {
-    button.classList.add('active')
-  }
+  button.classList.add('active')
   button.innerHTML = `<p>ブックマークまで移動</p>`;
   button.prepend(icon)
   button.addEventListener('click', () => {
@@ -242,7 +232,7 @@ function hideEarlyAccess() {
   }
 }
 
-function registerToggleHideEarlyAccess() {
+function registerMenuToggleHideEarlyAccess() {
   // 現在のメニューコマンドIDを管理
   let currentCommandId;
   // メニューを更新する関数
@@ -271,18 +261,15 @@ async function main() {
     return;
   }
   await waitForLoadingComplete();
-  await scrollToTheBookmark();
-  if (ifBookmarkIsInView()) {
-    isBookmarkAlreadyShown = true
-  }
+  await initialScrollToTheBookmark();
 
   saveBookmark();
+
   // add a jump to bookmark button
   addScrollToBookmarkButton();
-
   // register a menu command
   // GM_registerMenuCommand('ブックマークまで移動', forceMoveToBookmark);
-  registerToggleHideEarlyAccess()
+  registerMenuToggleHideEarlyAccess()
   // hide Early Access models
   $('.scroll-area').addEventListener('scrollend', hideEarlyAccess)
 }
