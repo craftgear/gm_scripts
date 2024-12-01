@@ -3,7 +3,10 @@
 // @namespace   Violentmonkey Scripts
 // @match       https://civitai.com/models
 // @grant       GM_registerMenuCommand
+// @grant       GM_unregisterMenuCommand
 // @grant       GM_addStyle
+// @grant       GM_getValue
+// @grant       GM_setValue
 // @run-at      document-idle
 // @version     1.2.0
 // @license     MIT
@@ -16,7 +19,10 @@ const BOOKMARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 5
 const BOOKMARK_CLASSNAME = 'bookmarked';
 const JUMP_TO_BOOKMARK_BUTTON_ID_NAME = 'jump-to-bookmark';
 
-let isJumpToBookmarkButtonAlreadyShowed = false;
+// ブックマークが一度でも画面に表示されたかどうか
+let isBookmarkAlreadyShown = false;
+// トグル状態を保存する変数（デフォルト: false）
+let isHideEarlyAccessEnabled = GM_getValue("isHideEarlyAccessEnabled", false);
 
 GM_addStyle(`
 @keyframes fadein {
@@ -46,19 +52,29 @@ GM_addStyle(`
 
 .scroll-to-bookmark-button {
   display: flex;
-  gap: 0.2rem;
+  gap: 1rem;
   align-items: center;
   position: fixed;
-  bottom: 30px;
-  right: 60px;
-  color: #EFEFEF; 
+  bottom: 40px;
+  right: -14rem;
+  color: #EFEFEF;
   background-color: coral;
-  padding: 0.5rem 0.65rem;
+  padding: 0.5rem 2.5rem 0.5rem 0.8rem;
   border-radius: 2rem;
-  border: 3px solid #EFEFEF;
-  animation: 0.2s ease-in-out 1 fadein;
+  border: 2px solid #EFEFEF;
+  animation: 0.2s ease-in-out 1 fadein ;
   z-index: 100;
-}`)
+  transition: all 0.2s ease-out;
+}
+.scroll-to-bookmark-button:hover {
+  right: -1.5rem;
+}
+.scroll-to-bookmark-button.active {
+  right: -1.5rem;
+}
+`)
+
+'use strict;'
 
 function $(selector) {
   return document.querySelector(selector)
@@ -106,13 +122,12 @@ async function scrollToTheBookmark(retry = 1) {
   }
 
   if (retry > LOAD_NEXT_PAGE) {
-    console.info('bookmarked models are NOT found.')
     localStorage.removeItem(LOCAL_STORAGE_KEY);
     return;
   }
 
   if ($(`.${BOOKMARK_CLASSNAME}`)) {
-    forceMoveToBookmark()
+    $(`.${BOOKMARK_CLASSNAME}`).scrollIntoView({ behavior: 'smooth' });
     return
   }
 
@@ -177,17 +192,7 @@ function forceMoveToBookmark() {
   $(`.${BOOKMARK_CLASSNAME}`).scrollIntoView({ behavior: 'smooth' });
 }
 
-function hideScrollToBookmarkButton() {
-  const button = $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`);
-  if (ifBookmarkIsInView() && button) {
-    button.remove();
-  }
-}
-
-function showScrollToBookmarkButton() {
-  if (ifBookmarkIsInView()) {
-    return;
-  }
+function addScrollToBookmarkButton() {
   if ($(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`)) {
     return;
   }
@@ -198,22 +203,22 @@ function showScrollToBookmarkButton() {
   const button = document.createElement('button');
   button.id = JUMP_TO_BOOKMARK_BUTTON_ID_NAME;
   button.classList.add('scroll-to-bookmark-button')
-  if (!isJumpToBookmarkButtonAlreadyShowed) {
-    button.innerHTML = `<p>ブックマークまで移動</p>`;
+  if (!isBookmarkAlreadyShown) {
+    button.classList.add('active')
   }
+  button.innerHTML = `<p>ブックマークまで移動</p>`;
   button.prepend(icon)
   button.addEventListener('click', () => {
+    button.classList.remove('active')
     forceMoveToBookmark();
-    button.remove();
   });
 
-  isJumpToBookmarkButtonAlreadyShowed = true;
   $('body').appendChild(button);
 }
 
 function ifBookmarkIsInView() {
-  const bookmarkedModel = $(`.${BOOKMARK_CLASSNAME}`);
-  if (!bookmarkedModel) {
+  const bookmarkedElement = $(`.${BOOKMARK_CLASSNAME}`);
+  if (!bookmarkedElement) {
     return false;
   }
 
@@ -227,6 +232,38 @@ function ifBookmarkIsInView() {
   return false;
 }
 
+function hideEarlyAccess() {
+  if (isHideEarlyAccessEnabled) {
+    $$('a[href^="/models/"]').forEach(x => {
+      if (x.innerText.includes('Early Access')) {
+        x.parentNode.parentNode.remove()
+      }
+    })
+  }
+}
+
+function registerToggleHideEarlyAccess() {
+  // 現在のメニューコマンドIDを管理
+  let currentCommandId;
+  // メニューを更新する関数
+  function updateMenu() {
+    // 既存のコマンドを削除
+    if (currentCommandId) {
+      GM_unregisterMenuCommand(currentCommandId);
+    }
+    // 新しいメニューを登録
+    const label = isHideEarlyAccessEnabled ? '☑ Early Accessを隠す' : "□ Early Accessを隠す";
+    currentCommandId = GM_registerMenuCommand(label, toggleFeature);
+  }
+  // トグル機能
+  function toggleFeature() {
+    isHideEarlyAccessEnabled = !isHideEarlyAccessEnabled;
+    GM_setValue("isHideEarlyAccessEnabled", isHideEarlyAccessEnabled); // 状態を保存
+    updateMenu(); // メニューを更新
+  }
+  // 初期化時にメニューを設定
+  updateMenu();
+}
 
 async function main() {
   if (! await isSortByNewest()) {
@@ -235,16 +272,19 @@ async function main() {
   }
   await waitForLoadingComplete();
   await scrollToTheBookmark();
+  if (ifBookmarkIsInView()) {
+    isBookmarkAlreadyShown = true
+  }
+
   saveBookmark();
+  // add a jump to bookmark button
+  addScrollToBookmarkButton();
 
   // register a menu command
-  GM_registerMenuCommand('ブックマークまで移動', forceMoveToBookmark);
-  // add a jump to bookmark button
-  window.addEventListener('focus', showScrollToBookmarkButton)
-
-  if (ifBookmarkIsInView()) {
-    isJumpToBookmarkButtonAlreadyShowed = true
-  }
+  // GM_registerMenuCommand('ブックマークまで移動', forceMoveToBookmark);
+  registerToggleHideEarlyAccess()
+  // hide Early Access models
+  $('.scroll-area').addEventListener('scrollend', hideEarlyAccess)
 }
 
 main()
