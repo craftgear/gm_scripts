@@ -8,7 +8,7 @@
 // @grant       GM_getValue
 // @grant       GM_setValue
 // @run-at      document-idle
-// @version     1.2.0
+// @version     1.2.1
 // @license     MIT
 // @updateURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // ==/UserScript==
