@@ -1,16 +1,17 @@
 // ==UserScript==
-// @name        last position bookmark for Civitai
-// @namespace   Violentmonkey Scripts
-// @match       https://civitai.com/models
-// @grant       GM_registerMenuCommand
-// @grant       GM_unregisterMenuCommand
-// @grant       GM_addStyle
-// @grant       GM_getValue
-// @grant       GM_setValue
-// @run-at      document-idle
-// @version     1.2.1
-// @license     MIT
-// @updateURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
+// @name          last position bookmark for Civitai
+// @namespace     Violentmonkey Scripts
+// @match         https://civitai.com/models
+// @grant         GM_registerMenuCommand
+// @grant         GM_unregisterMenuCommand
+// @grant         GM_addStyle
+// @grant         GM_getValue
+// @grant         GM_setValue
+// @run-at        document-idle
+// @version       1.2.3
+// @license       MIT
+// @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
+// @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // ==/UserScript==
 
 const LOCAL_STORAGE_KEY = 'bookmarks';
@@ -23,6 +24,20 @@ const JUMP_TO_BOOKMARK_BUTTON_ID_NAME = 'jump-to-bookmark';
 let isHideEarlyAccessEnabled = GM_getValue("isHideEarlyAccessEnabled", false);
 
 GM_addStyle(`
+@keyframes pulse {
+  0% {
+    background-color: gold;
+    opacity: 1;
+  }
+  50% {
+    background-color: coral;
+    opacity: 1;
+  }
+  100% {
+    background-color: gold;
+    opacity: 1;
+  }
+}
 .bookmarked {
   border: 6px solid coral;
 }
@@ -50,13 +65,14 @@ GM_addStyle(`
   border-radius: 2rem;
   border: 2px solid #EFEFEF;
   z-index: 100;
-  transition: all 0.2s ease-out;
+  transition: all 0.1s ease-out;
 }
 .scroll-to-bookmark-button:hover {
   right: -1.5rem;
 }
 .scroll-to-bookmark-button.active {
   right: -1.5rem;
+  animation: 2s ease-in-out infinite pulse ;
 }
 `)
 
@@ -96,7 +112,7 @@ async function isSortByNewest() {
 }
 
 function getModels() {
-  return Array.from(document.querySelectorAll('a[href^="/models/"]')).filter(x => !x.innerText.includes('Early Access'));
+  return Array.from(document.querySelectorAll('a[href^="/models/"]'));
 }
 
 async function initialScrollToTheBookmark(retry = 1) {
@@ -226,7 +242,7 @@ function hideEarlyAccess() {
   if (isHideEarlyAccessEnabled) {
     $$('a[href^="/models/"]').forEach(x => {
       if (x.innerText.includes('Early Access')) {
-        x.parentNode.parentNode.remove()
+        x.setAttribute('style', 'display: none;')
       }
     })
   }
