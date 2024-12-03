@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.2.3
+// @version       1.2.5
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -72,7 +72,7 @@ GM_addStyle(`
 }
 .scroll-to-bookmark-button.active {
   right: -1.5rem;
-  animation: 2s ease-in-out infinite pulse ;
+  animation: 3s ease-in-out infinite pulse ;
 }
 `)
 
@@ -157,9 +157,9 @@ async function initialScrollToTheBookmark(retry = 1) {
   bookmarkedModel.classList.add(BOOKMARK_CLASSNAME);
   bookmarkedModel.scrollIntoView({ behavior: 'smooth' });
   setTimeout(() => {
-    if (ifBookmarkIsInView()) {
+    if (!ifBookmarkIsInView()) {
       const button = $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`);
-      button?.classList.remove('active')
+      button?.classList.add('active')
     }
   }, 500)
 
@@ -211,8 +211,7 @@ function addScrollToBookmarkButton() {
   const button = document.createElement('button');
   button.id = JUMP_TO_BOOKMARK_BUTTON_ID_NAME;
   button.classList.add('scroll-to-bookmark-button')
-  button.classList.add('active')
-  button.innerHTML = `<p>ブックマークまで移動</p>`;
+  button.innerHTML = `<p>jump to bookmark</p>`;
   button.prepend(icon)
   button.addEventListener('click', () => {
     button.classList.remove('active')
@@ -249,25 +248,19 @@ function hideEarlyAccess() {
 }
 
 function registerMenuToggleHideEarlyAccess() {
-  // 現在のメニューコマンドIDを管理
   let currentCommandId;
-  // メニューを更新する関数
   function updateMenu() {
-    // 既存のコマンドを削除
     if (currentCommandId) {
       GM_unregisterMenuCommand(currentCommandId);
     }
-    // 新しいメニューを登録
-    const label = isHideEarlyAccessEnabled ? '☑ Early Accessを隠す' : "□ Early Accessを隠す";
-    currentCommandId = GM_registerMenuCommand(label, toggleFeature);
+    const label = isHideEarlyAccessEnabled ? '☑ hide Early Access' : "□ hide Early Access";
+    currentCommandId = GM_registerMenuCommand(label, toggleHideEarlyAccess);
   }
-  // トグル機能
-  function toggleFeature() {
+  function toggleHideEarlyAccess() {
     isHideEarlyAccessEnabled = !isHideEarlyAccessEnabled;
-    GM_setValue("isHideEarlyAccessEnabled", isHideEarlyAccessEnabled); // 状態を保存
-    updateMenu(); // メニューを更新
+    GM_setValue("isHideEarlyAccessEnabled", isHideEarlyAccessEnabled);
+    updateMenu();
   }
-  // 初期化時にメニューを設定
   updateMenu();
 }
 
@@ -284,12 +277,9 @@ async function main() {
   // add a jump to bookmark button
   addScrollToBookmarkButton();
   // register a menu command
-  // GM_registerMenuCommand('ブックマークまで移動', forceMoveToBookmark);
   registerMenuToggleHideEarlyAccess()
   // hide Early Access models
   $('.scroll-area').addEventListener('scrollend', hideEarlyAccess)
 }
 
 main()
-
-
