@@ -51,7 +51,7 @@ function hide() {
       if (window.location.pathname.startsWith('/directory/following')) {
         x?.parentNode?.parentNode?.setAttribute('style', 'display: none !important;');
       } else {
-        x?.parentNode?.parentNode?.parentNode?.parentNode?.setAttribute('style', 'display: none !important;');
+        x?.parentNode?.parentNode?.parentNode?.parentNode?.parentNode?.setAttribute('style', 'display: none !important;');
       }
       x.setAttribute(HIDDEN_ATTR, true);
     }
