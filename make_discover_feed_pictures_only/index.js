@@ -9,15 +9,23 @@
 // @description 2024/12/4 13:35:10
 // ==/UserScript==
 
+const $ = (selector) => document.querySelector(selector)
+const $$ = (selector) => document.querySelectorAll(selector)
+
 function deleteText() {
-  document.querySelectorAll('div[data-testid^=feedItem-by-] *').forEach(x => x.children.length === 0 ? x.innerText = '' : null)
-  document.querySelectorAll('div[data-testid^=postText]').forEach(x => x.innerText = '')
+  if ($('div[style="border-bottom-color: rgb(32, 139, 254);"]').innerText.includes('Discover')) {
+    $$('div[data-testid^=feedItem-by-] *').forEach(x => {
+      x.children.length === 0 ? x.innerText = '' : null;
+    })
+    $$('div[data-testid^=postText]').forEach(x => x.innerText = '')
+    $$('div[style*="https://cdn.bsky.app/img/avatar_thumbnail/plain/"]').forEach(x => x.remove())
+  };
 }
 
 function main() {
   const observer = new MutationObserver(deleteText);
 
-  observer.observe(document.querySelector('body'), { subtree: true, childList: true })
+  observer.observe($('body'), { subtree: true, childList: true })
 }
 
 main()
