@@ -48,7 +48,7 @@ GM_addStyle(`
   height: 60px;
   width: 24px;
   color: coral;
-  z-index: 999;
+  z-index: 9;
 }
 
 .scroll-to-bookmark-button {
@@ -326,7 +326,7 @@ async function main() {
   $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.remove('hidden')
   await initialScrollToTheBookmark();
 
-  // saveBookmark();
+  saveBookmark();
 
   // hide Early Access models
   // FIXME: this works only the sripts starts on models page
