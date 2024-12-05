@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name          last position bookmark for Civitai
 // @namespace     Violentmonkey Scripts
-// @match         https://civitai.com/models
+// @match         https://civitai.com/*
 // @grant         GM_registerMenuCommand
 // @grant         GM_unregisterMenuCommand
 // @grant         GM_addStyle
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.2.5
+// @version       1.3.0
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -16,11 +16,10 @@
 
 const LOCAL_STORAGE_KEY = 'bookmarks';
 const LOAD_NEXT_PAGE = 10;
-const BOOKMARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor"><!--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M0 48V487.7C0 501.1 10.9 512 24.3 512c5 0 9.9-1.5 14-4.4L192 400 345.7 507.6c4.1 2.9 9 4.4 14 4.4c13.4 0 24.3-10.9 24.3-24.3V48c0-26.5-21.5-48-48-48H48C21.5 0 0 21.5 0 48z"/></svg>';
+const BOOKMARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor">< !--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M0 48V487.7C0 501.1 10.9 512 24.3 512c5 0 9.9-1.5 14-4.4L192 400 345.7 507.6c4.1 2.9 9 4.4 14 4.4c13.4 0 24.3-10.9 24.3-24.3V48c0-26.5-21.5-48-48-48H48C21.5 0 0 21.5 0 48z"/></svg>`;
 const BOOKMARK_CLASSNAME = 'bookmarked';
 const JUMP_TO_BOOKMARK_BUTTON_ID_NAME = 'jump-to-bookmark';
 
-// トグル状態を保存する変数（デフォルト: false）
 let isHideEarlyAccessEnabled = GM_getValue("isHideEarlyAccessEnabled", false);
 
 GM_addStyle(`
@@ -58,7 +57,7 @@ GM_addStyle(`
   align-items: center;
   position: fixed;
   bottom: 40px;
-  right: -14rem;
+  right: -13.5rem;
   color: #EFEFEF;
   background-color: coral;
   padding: 0.5rem 2.5rem 0.5rem 0.8rem;
@@ -72,7 +71,10 @@ GM_addStyle(`
 }
 .scroll-to-bookmark-button.active {
   right: -1.5rem;
-  animation: 3s ease-in-out infinite pulse ;
+  animation: 2s ease-in-out infinite pulse ;
+}
+.scroll-to-bookmark-button.hide {
+  display: none;
 }
 `)
 
@@ -111,12 +113,36 @@ async function isSortByNewest() {
   return divs.length > 0;
 }
 
-function getModels() {
+function queryAllModels() {
   return Array.from(document.querySelectorAll('a[href^="/models/"]'));
 }
 
+async function findAndMarkBookmarkedModel(bookmarks) {
+  await waitForLoadingComplete();
+  const models = queryAllModels();
+  const bookmarkedModels = models.filter((model) => {
+    return bookmarks.some(bookmark => model.href.match(bookmark))
+  });
+  const bookmarkedModel = bookmarkedModels.pop() ?? null;
+  if (!bookmarkedModel) {
+    return [null, models.pop()];
+  }
+  const icon = createBookmarkIcon()
+  icon.classList.add('bookmark-icon')
+
+  bookmarkedModel.classList.add('bookmarked')
+  bookmarkedModel.appendChild(icon);
+  bookmarkedModel.classList.add(BOOKMARK_CLASSNAME);
+
+  return [bookmarkedModel, null];
+}
+
+function loadBookmarks() {
+  return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
+}
+
 async function initialScrollToTheBookmark(retry = 1) {
-  const bookmarks = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
+  const bookmarks = loadBookmarks();
 
   if (!bookmarks) {
     saveBookmark();
@@ -133,28 +159,17 @@ async function initialScrollToTheBookmark(retry = 1) {
     return
   }
 
-  const models = getModels();
-  const bookmarkedModels = models.filter((model) => {
-    return bookmarks.some(bookmark => model.href.match(bookmark))
-  });
-  const bookmarkedModel = bookmarkedModels.pop() ?? null;
-
+  const result = await findAndMarkBookmarkedModel(bookmarks);
+  const [bookmarkedModel, oldestModel] = result;
   if (!bookmarkedModel) {
     console.info('the bookmarked model is not found in this page', retry);
-    const oldestModel = models.pop();
+
     oldestModel.scrollIntoView();
 
     await sleep(1000);
     return await initialScrollToTheBookmark(retry + 1);
   }
 
-
-  const icon = createBookmarkIcon()
-  icon.classList.add('bookmark-icon')
-
-  bookmarkedModel.classList.add('bookmarked')
-  bookmarkedModel.appendChild(icon);
-  bookmarkedModel.classList.add(BOOKMARK_CLASSNAME);
   bookmarkedModel.scrollIntoView({ behavior: 'smooth' });
   setTimeout(() => {
     if (!ifBookmarkIsInView()) {
@@ -169,7 +184,7 @@ async function initialScrollToTheBookmark(retry = 1) {
 }
 
 function saveBookmark() {
-  const latestModels = getModels().slice(0, 3);
+  const latestModels = queryAllModels().slice(0, 3);
   const bookmarks = latestModels.map(x => {
     const modelId = x?.href?.match(/models\/(\d*)\//)?.at(1) ?? 'none';
     const modelVersionId = x?.href?.match(/\?modelVersionId=(\d*)/)?.at(1) ?? '';
@@ -188,7 +203,7 @@ async function waitForLoadingComplete(retry = 1) {
     return;
   }
 
-  const models = getModels();
+  const models = queryAllModels();
 
   if (models.length === 0) {
     await sleep();
@@ -210,8 +225,9 @@ function addScrollToBookmarkButton() {
 
   const button = document.createElement('button');
   button.id = JUMP_TO_BOOKMARK_BUTTON_ID_NAME;
+  button.classList.add('hidden')
   button.classList.add('scroll-to-bookmark-button')
-  button.innerHTML = `<p>jump to bookmark</p>`;
+  button.innerHTML = `<p>jump to the bookmark</p>`;
   button.prepend(icon)
   button.addEventListener('click', () => {
     button.classList.remove('active')
@@ -248,38 +264,76 @@ function hideEarlyAccess() {
 }
 
 function registerMenuToggleHideEarlyAccess() {
+  // 現在のメニューコマンドIDを管理
   let currentCommandId;
+  // メニューを更新する関数
   function updateMenu() {
+    // 既存のコマンドを削除
     if (currentCommandId) {
       GM_unregisterMenuCommand(currentCommandId);
     }
-    const label = isHideEarlyAccessEnabled ? '☑ hide Early Access' : "□ hide Early Access";
-    currentCommandId = GM_registerMenuCommand(label, toggleHideEarlyAccess);
+    // 新しいメニューを登録
+    const label = isHideEarlyAccessEnabled ? '☑ Early Accessを隠す' : "□ Early Accessを隠す";
+    currentCommandId = GM_registerMenuCommand(label, toggleFeature);
   }
-  function toggleHideEarlyAccess() {
+  // トグル機能
+  function toggleFeature() {
     isHideEarlyAccessEnabled = !isHideEarlyAccessEnabled;
-    GM_setValue("isHideEarlyAccessEnabled", isHideEarlyAccessEnabled);
-    updateMenu();
+    GM_setValue("isHideEarlyAccessEnabled", isHideEarlyAccessEnabled); // 状態を保存
+    updateMenu(); // メニューを更新
   }
+  // 初期化時にメニューを設定
   updateMenu();
 }
 
+let prevLocation = window.location.href;
+function observeLocationChange() {
+  const observer = new MutationObserver(async (x) => {
+    const currentLocation = window.location.href;
+    if (prevLocation !== currentLocation) {
+      prevLocation = currentLocation
+      if (currentLocation.endsWith('models')) {
+        $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.remove('hidden')
+        const test = await findAndMarkBookmarkedModel(loadBookmarks());
+        console.log(test)
+      } else {
+        $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.add('hidden')
+      }
+    }
+  })
+  observer.observe($('body'), {
+    childList: true, subTree: true
+  })
+}
+
 async function main() {
+  observeLocationChange()
+  // register a menu command
+  registerMenuToggleHideEarlyAccess()
+  // add a jump to bookmark button
+  addScrollToBookmarkButton();
+
+
+  if (!window.location.href.endsWith('models')) {
+    return;
+  }
+
   if (! await isSortByNewest()) {
     console.info('this script should run only on newest sort mode');
     return;
   }
-  await waitForLoadingComplete();
+
+  $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.remove('hidden')
   await initialScrollToTheBookmark();
 
-  saveBookmark();
+  // saveBookmark();
 
-  // add a jump to bookmark button
-  addScrollToBookmarkButton();
-  // register a menu command
-  registerMenuToggleHideEarlyAccess()
   // hide Early Access models
+  // FIXME: this works only the sripts starts on models page
   $('.scroll-area').addEventListener('scrollend', hideEarlyAccess)
+
 }
 
 main()
+
+
