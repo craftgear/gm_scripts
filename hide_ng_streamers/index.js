@@ -6,7 +6,7 @@
 //
 //
 // @grant       none
-// @version     1.1.0
+// @version     1.1.1
 // @license     MIT
 // @run-at      document-end
 // @noframes
@@ -49,7 +49,7 @@ function hide() {
   channels.forEach(function (x) {
     if (shouldBeHidden(x.innerText)) {
       if (window.location.pathname.startsWith('/directory/following')) {
-        x?.parentNode?.parentNode?.setAttribute('style', 'display: none !important;');
+        x?.parentNode?.parentNode?.parentNode?.setAttribute('style', 'display: none !important;');
       } else {
         x?.parentNode?.parentNode?.parentNode?.parentNode?.parentNode?.setAttribute('style', 'display: none !important;');
       }

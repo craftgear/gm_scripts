@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.3.0
+// @version       1.3.1
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -57,7 +57,7 @@ GM_addStyle(`
   align-items: center;
   position: fixed;
   bottom: 40px;
-  right: -13.5rem;
+  right: -14rem;
   color: #EFEFEF;
   background-color: coral;
   padding: 0.5rem 2.5rem 0.5rem 0.8rem;
@@ -288,7 +288,7 @@ function registerMenuToggleHideEarlyAccess() {
 
 let prevLocation = window.location.href;
 function observeLocationChange() {
-  const observer = new MutationObserver(async (x) => {
+  const observer = new MutationObserver(async () => {
     const currentLocation = window.location.href;
     if (prevLocation !== currentLocation) {
       prevLocation = currentLocation
