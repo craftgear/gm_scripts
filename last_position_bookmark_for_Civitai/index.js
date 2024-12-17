@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.3.6
+// @version       1.4.1
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -130,9 +130,8 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   const icon = createBookmarkIcon()
   icon.classList.add('bookmark-icon')
 
-  bookmarkedModel.classList.add('bookmarked')
-  bookmarkedModel.appendChild(icon);
-  bookmarkedModel.classList.add(BOOKMARK_CLASSNAME);
+  bookmarkedModel.parentNode.parentNode.appendChild(icon);
+  bookmarkedModel.parentNode.parentNode.classList.add(BOOKMARK_CLASSNAME);
 
   return [bookmarkedModel, null, models];
 }
@@ -159,7 +158,7 @@ function activateButton(retry = 1) {
   }, 500)
 }
 
-async function initialScrollToTheBookmark(retry = 1, firstThreeModels = []) {
+async function initialScrollToTheBookmark(retry = 1, firstThreeModels = null) {
   await waitForLoadingComplete();
   const bookmarks = loadBookmarks();
 
@@ -192,17 +191,17 @@ async function initialScrollToTheBookmark(retry = 1, firstThreeModels = []) {
 
   bookmarkedModel.scrollIntoView({ behavior: 'smooth' });
   activateButton()
-  await saveBookmark();
+  await saveBookmark(firstThreeModels);
 
   console.info('moved to the last bookmark');
 
   return;
 }
 
-async function saveBookmark(models = null) {
+async function saveBookmark(firstThreeModels = null) {
   await waitForLoadingComplete();
 
-  const latestModels = models ? models.slice(0, 3) : queryAllModels().slice(0, 3);
+  const latestModels = firstThreeModels ? firstThreeModels : queryAllModels().slice(0, 3);
   const bookmarks = latestModels.map(x => {
     const modelId = x?.href?.match(/models\/(\d*)\//)?.at(1) ?? 'none';
     const modelVersionId = x?.href?.match(/\?modelVersionId=(\d*)/)?.at(1) ?? '';
@@ -311,6 +310,8 @@ function observeLocationChange() {
     if (prevLocation !== currentLocation) {
       prevLocation = currentLocation
       if (currentLocation.endsWith('models')) {
+        const bookmarks = loadBookmarks();
+        await findAndMarkBookmarkedModel(bookmarks)
         $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.remove('hidden')
       } else {
         $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.add('hidden')
