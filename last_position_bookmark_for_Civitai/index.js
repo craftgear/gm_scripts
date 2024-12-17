@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.3.1
+// @version       1.3.6
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -38,7 +38,7 @@ GM_addStyle(`
   }
 }
 .bookmarked {
-  border: 6px solid coral;
+  border: 6px solid coral !important;
 }
 
 .bookmark-icon {
@@ -122,10 +122,10 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   const models = queryAllModels();
   const bookmarkedModels = models.filter((model) => {
     return bookmarks.some(bookmark => model.href.match(bookmark))
-  });
+  }).filter(x => !x.innerText.includes('Early Access'));
   const bookmarkedModel = bookmarkedModels.pop() ?? null;
   if (!bookmarkedModel) {
-    return [null, models.pop()];
+    return [null, models.pop(), models];
   }
   const icon = createBookmarkIcon()
   icon.classList.add('bookmark-icon')
@@ -134,23 +134,44 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   bookmarkedModel.appendChild(icon);
   bookmarkedModel.classList.add(BOOKMARK_CLASSNAME);
 
-  return [bookmarkedModel, null];
+  return [bookmarkedModel, null, models];
 }
 
 function loadBookmarks() {
   return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
 }
 
-async function initialScrollToTheBookmark(retry = 1) {
+function activateButton(retry = 1) {
+  if (retry >= 5) {
+    console.log('cannot find activate button in 2.5secs')
+    return;
+  }
+  setTimeout(() => {
+    if (ifBookmarkIsInView()) {
+      return;
+    }
+    const button = $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`);
+    if (!button) {
+      activateButton(retry + 1)
+      return
+    }
+    button.classList.add('active')
+  }, 500)
+}
+
+async function initialScrollToTheBookmark(retry = 1, firstThreeModels = []) {
+  await waitForLoadingComplete();
   const bookmarks = loadBookmarks();
 
   if (!bookmarks) {
-    saveBookmark();
+    await saveBookmark();
     return;
   }
 
   if (retry > LOAD_NEXT_PAGE) {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
+    console.log('could nod find bookmarks')
+    await saveBookmark(firstThreeModels);
     return;
   }
 
@@ -160,31 +181,28 @@ async function initialScrollToTheBookmark(retry = 1) {
   }
 
   const result = await findAndMarkBookmarkedModel(bookmarks);
-  const [bookmarkedModel, oldestModel] = result;
+  const [bookmarkedModel, oldestModel, loadedModels] = result;
   if (!bookmarkedModel) {
     console.info('the bookmarked model is not found in this page', retry);
-
     oldestModel.scrollIntoView();
 
     await sleep(1000);
-    return await initialScrollToTheBookmark(retry + 1);
+    return await initialScrollToTheBookmark(retry + 1, retry === 1 ? loadedModels.slice(0, 3) : firstThreeModels);
   }
 
   bookmarkedModel.scrollIntoView({ behavior: 'smooth' });
-  setTimeout(() => {
-    if (!ifBookmarkIsInView()) {
-      const button = $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`);
-      button?.classList.add('active')
-    }
-  }, 500)
+  activateButton()
+  await saveBookmark();
 
   console.info('moved to the last bookmark');
 
   return;
 }
 
-function saveBookmark() {
-  const latestModels = queryAllModels().slice(0, 3);
+async function saveBookmark(models = null) {
+  await waitForLoadingComplete();
+
+  const latestModels = models ? models.slice(0, 3) : queryAllModels().slice(0, 3);
   const bookmarks = latestModels.map(x => {
     const modelId = x?.href?.match(/models\/(\d*)\//)?.at(1) ?? 'none';
     const modelVersionId = x?.href?.match(/\?modelVersionId=(\d*)/)?.at(1) ?? '';
@@ -257,7 +275,7 @@ function hideEarlyAccess() {
   if (isHideEarlyAccessEnabled) {
     $$('a[href^="/models/"]').forEach(x => {
       if (x.innerText.includes('Early Access')) {
-        x.setAttribute('style', 'display: none;')
+        x.setAttribute('style', 'opacity: 0;')
       }
     })
   }
@@ -273,7 +291,7 @@ function registerMenuToggleHideEarlyAccess() {
       GM_unregisterMenuCommand(currentCommandId);
     }
     // 新しいメニューを登録
-    const label = isHideEarlyAccessEnabled ? '☑ Early Accessを隠す' : "□ Early Accessを隠す";
+    const label = isHideEarlyAccessEnabled ? '☑ hide Early Access' : '□ hide Early Access';
     currentCommandId = GM_registerMenuCommand(label, toggleFeature);
   }
   // トグル機能
@@ -294,8 +312,6 @@ function observeLocationChange() {
       prevLocation = currentLocation
       if (currentLocation.endsWith('models')) {
         $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.remove('hidden')
-        const test = await findAndMarkBookmarkedModel(loadBookmarks());
-        console.log(test)
       } else {
         $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.add('hidden')
       }
@@ -326,10 +342,9 @@ async function main() {
   $(`#${JUMP_TO_BOOKMARK_BUTTON_ID_NAME}`).classList.remove('hidden')
   await initialScrollToTheBookmark();
 
-  saveBookmark();
 
   // hide Early Access models
-  // FIXME: this works only the sripts starts on models page
+  // FIXME: this works only when the sripts starts on models page
   $('.scroll-area').addEventListener('scrollend', hideEarlyAccess)
 
 }
