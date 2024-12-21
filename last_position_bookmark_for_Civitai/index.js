@@ -8,17 +8,21 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.4.1
+// @version       1.5.1
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // ==/UserScript==
 
 const LOCAL_STORAGE_KEY = 'bookmarks';
-const LOAD_NEXT_PAGE = 10;
+const BOOKMARK_MODEL_SIZE = 5;
+const LOAD_NEXT_PAGE = 200;
 const BOOKMARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor">< !--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M0 48V487.7C0 501.1 10.9 512 24.3 512c5 0 9.9-1.5 14-4.4L192 400 345.7 507.6c4.1 2.9 9 4.4 14 4.4c13.4 0 24.3-10.9 24.3-24.3V48c0-26.5-21.5-48-48-48H48C21.5 0 0 21.5 0 48z"/></svg>`;
 const BOOKMARK_CLASSNAME = 'bookmarked';
 const JUMP_TO_BOOKMARK_BUTTON_ID_NAME = 'jump-to-bookmark';
+const MESSAGE_CONTAINER_CLASSNAME = 'message-container';
+const LOOKING_FOR_THE_BOOKMARK = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"> <circle cx="18" cy="12" r="0" fill="currentColor"> <animate attributeName="r" begin=".67" calcMode="spline" dur="1.5s" keySplines="0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8" repeatCount="indefinite" values="0;2;0;0" /> </circle> <circle cx="12" cy="12" r="0" fill="currentColor"> <animate attributeName="r" begin=".33" calcMode="spline" dur="1.5s" keySplines="0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8" repeatCount="indefinite" values="0;2;0;0" /> </circle> <circle cx="6" cy="12" r="0" fill="currentColor"> <animate attributeName="r" begin="0" calcMode="spline" dur="1.5s" keySplines="0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8" repeatCount="indefinite" values="0;2;0;0" /> </circle> </svg>`
+const LOOKING_FOR_THE_BOOKMARK_CLASSNAME = 'looking-for-the-bookmark'
 
 let isHideEarlyAccessEnabled = GM_getValue("isHideEarlyAccessEnabled", false);
 
@@ -37,6 +41,7 @@ GM_addStyle(`
     opacity: 1;
   }
 }
+
 .bookmarked {
   border: 6px solid coral !important;
 }
@@ -76,6 +81,37 @@ GM_addStyle(`
 .scroll-to-bookmark-button.hide {
   display: none;
 }
+
+
+.message-container {
+  position: absolute;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+}
+
+.looking-for-the-bookmark {
+  position: fixed;
+  top: 20px;
+  width:auto;
+  overflow: hidden;
+  color: #EFEFEF;
+  background-color: coral;
+  transition: all 0.1s ease-out;
+  padding: 0.3rem 0.9rem;
+  border-radius: 2rem;
+  display: flex;
+  border: 2px solid #EFEFEF;
+  opacity: 1;
+}
+
+.looking-for-the-bookmark.opacity0 {
+  opacity: 0;
+}
 `)
 
 'use strict;'
@@ -101,12 +137,6 @@ function addAttribute(elem, key, value) {
   elem.setAttribute(key, `${oldValues} ${value}`);
 }
 
-function createBookmarkIcon() {
-  const div = document.createElement('div');
-  div.innerHTML = BOOKMARK_SVG;
-  return div;
-}
-
 async function isSortByNewest() {
   await sleep();
   const divs = Array.from(document.querySelectorAll('div')).filter(x => x.innerText === 'Newest');
@@ -114,7 +144,44 @@ async function isSortByNewest() {
 }
 
 function queryAllModels() {
-  return Array.from(document.querySelectorAll('a[href^="/models/"]'));
+  return Array.from(document.querySelectorAll('a[href^="/models/"]:not([data-unread])'));
+}
+
+function createBookmarkIcon() {
+  const div = document.createElement('div');
+  div.innerHTML = BOOKMARK_SVG;
+  return div;
+}
+
+function addLookingForTheBookmarkMessage() {
+  const container = document.createElement('div');
+  container.classList.add(MESSAGE_CONTAINER_CLASSNAME)
+  container.classList.add('hidden')
+  const div = document.createElement('div');
+  div.classList.add(LOOKING_FOR_THE_BOOKMARK_CLASSNAME)
+  div.classList.add('opacity0')
+  container.appendChild(div);
+  $('body').appendChild(container);
+}
+
+function showLookingForTheBookmarkMessage() {
+  $(`.${MESSAGE_CONTAINER_CLASSNAME}`).classList.remove('hidden')
+  $(`.${LOOKING_FOR_THE_BOOKMARK_CLASSNAME}`).innerHTML = `looking for the last bookmark${LOOKING_FOR_THE_BOOKMARK}`;
+  $(`.${LOOKING_FOR_THE_BOOKMARK_CLASSNAME}`).classList.remove('opacity0')
+}
+
+function updateLookingForTheBookmarkMessage(pageNumber) {
+  $(`.${LOOKING_FOR_THE_BOOKMARK_CLASSNAME}`).innerHTML = `looking for the last bookmark${LOOKING_FOR_THE_BOOKMARK}${pageNumber}`;
+}
+
+function hideLookingForTheBookmarkMessage(updateMessage = '') {
+  if (updateMessage) {
+    $(`.${LOOKING_FOR_THE_BOOKMARK_CLASSNAME}`).innerHTML = updateMessage;
+  }
+  $(`.${LOOKING_FOR_THE_BOOKMARK_CLASSNAME}`).classList.add('opacity0')
+  setTimeout(() => {
+    $(`.${MESSAGE_CONTAINER_CLASSNAME}`).classList.add('hidden')
+  }, 100)
 }
 
 async function findAndMarkBookmarkedModel(bookmarks) {
@@ -123,7 +190,7 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   const bookmarkedModels = models.filter((model) => {
     return bookmarks.some(bookmark => model.href.match(bookmark))
   }).filter(x => !x.innerText.includes('Early Access'));
-  const bookmarkedModel = bookmarkedModels.pop() ?? null;
+  const bookmarkedModel = bookmarkedModels.shift() ?? null;
   if (!bookmarkedModel) {
     return [null, models.pop(), models];
   }
@@ -133,7 +200,7 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   bookmarkedModel.parentNode.parentNode.appendChild(icon);
   bookmarkedModel.parentNode.parentNode.classList.add(BOOKMARK_CLASSNAME);
 
-  return [bookmarkedModel, null, models];
+  return [bookmarkedModel, null, models.slice(0, BOOKMARK_MODEL_SIZE)];
 }
 
 function loadBookmarks() {
@@ -158,7 +225,7 @@ function activateButton(retry = 1) {
   }, 500)
 }
 
-async function initialScrollToTheBookmark(retry = 1, firstThreeModels = null) {
+async function initialScrollToTheBookmark(retry = 1, newestModels = null) {
   await waitForLoadingComplete();
   const bookmarks = loadBookmarks();
 
@@ -167,10 +234,14 @@ async function initialScrollToTheBookmark(retry = 1, firstThreeModels = null) {
     return;
   }
 
+  showLookingForTheBookmarkMessage()
+  updateLookingForTheBookmarkMessage(retry)
+
   if (retry > LOAD_NEXT_PAGE) {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
     console.log('could nod find bookmarks')
-    await saveBookmark(firstThreeModels);
+    await saveBookmark(newestModels);
+    hideLookingForTheBookmarkMessage('could not find the last bookmark')
     return;
   }
 
@@ -180,50 +251,53 @@ async function initialScrollToTheBookmark(retry = 1, firstThreeModels = null) {
   }
 
   const result = await findAndMarkBookmarkedModel(bookmarks);
-  const [bookmarkedModel, oldestModel, loadedModels] = result;
+  const [bookmarkedModel, oldestModel, _newestModels] = result;
   if (!bookmarkedModel) {
     console.info('the bookmarked model is not found in this page', retry);
     oldestModel.scrollIntoView();
 
     await sleep(1000);
-    return await initialScrollToTheBookmark(retry + 1, retry === 1 ? loadedModels.slice(0, 3) : firstThreeModels);
+    return await initialScrollToTheBookmark(retry + 1, retry === 1 ? _newestModels : newestModels);
   }
+
+  hideLookingForTheBookmarkMessage('found the last bookmark')
 
   bookmarkedModel.scrollIntoView({ behavior: 'smooth' });
   activateButton()
-  await saveBookmark(firstThreeModels);
+  await saveBookmark(newestModels);
 
   console.info('moved to the last bookmark');
 
   return;
 }
 
-async function saveBookmark(firstThreeModels = null) {
+async function saveBookmark(newestModels = null) {
   await waitForLoadingComplete();
 
-  const latestModels = firstThreeModels ? firstThreeModels : queryAllModels().slice(0, 3);
-  const bookmarks = latestModels.map(x => {
+  const modelsForBookmark = newestModels ? newestModels : queryAllModels().slice(0, BOOKMARK_MODEL_SIZE);
+  const bookmarks = modelsForBookmark.map(x => {
     const modelId = x?.href?.match(/models\/(\d*)\//)?.at(1) ?? 'none';
     const modelVersionId = x?.href?.match(/\?modelVersionId=(\d*)/)?.at(1) ?? '';
     return `${modelId}.*${modelVersionId}`
   })
 
-  if (bookmarks.length === 0 || bookmarks.some(x => x.includes('none'))) {
-    console.error('there is no model: ', latestModels);
+  if (bookmarks.length === 0) {
+    console.error('there are no models: ', modelsForBookmark);
+    return
   }
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(bookmarks));
 }
 
 async function waitForLoadingComplete(retry = 1) {
   if (retry > 10) {
-    console.error('cannot find models');
+    console.error('wait for page loading timeout. nothing happened.');
     return;
   }
 
+  await sleep(500);
   const models = queryAllModels();
 
   if (models.length === 0) {
-    await sleep();
     return waitForLoadingComplete(retry + 1);
   }
 }
@@ -273,33 +347,27 @@ function ifBookmarkIsInView() {
 function hideEarlyAccess() {
   if (isHideEarlyAccessEnabled) {
     $$('a[href^="/models/"]').forEach(x => {
-      if (x.innerText.includes('Early Access')) {
-        x.setAttribute('style', 'opacity: 0;')
+      if (x.parentNode.innerText.includes('Early Access')) {
+        x.parentNode.setAttribute('style', 'opacity: 0;')
       }
     })
   }
 }
 
 function registerMenuToggleHideEarlyAccess() {
-  // 現在のメニューコマンドIDを管理
   let currentCommandId;
-  // メニューを更新する関数
   function updateMenu() {
-    // 既存のコマンドを削除
     if (currentCommandId) {
       GM_unregisterMenuCommand(currentCommandId);
     }
-    // 新しいメニューを登録
     const label = isHideEarlyAccessEnabled ? '☑ hide Early Access' : '□ hide Early Access';
     currentCommandId = GM_registerMenuCommand(label, toggleFeature);
   }
-  // トグル機能
   function toggleFeature() {
     isHideEarlyAccessEnabled = !isHideEarlyAccessEnabled;
     GM_setValue("isHideEarlyAccessEnabled", isHideEarlyAccessEnabled); // 状態を保存
-    updateMenu(); // メニューを更新
+    updateMenu();
   }
-  // 初期化時にメニューを設定
   updateMenu();
 }
 
@@ -329,6 +397,8 @@ async function main() {
   registerMenuToggleHideEarlyAccess()
   // add a jump to bookmark button
   addScrollToBookmarkButton();
+
+  addLookingForTheBookmarkMessage();
 
 
   if (!window.location.href.endsWith('models')) {
