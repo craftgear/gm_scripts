@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.5.1
+// @version       1.5.5
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -16,7 +16,7 @@
 
 const LOCAL_STORAGE_KEY = 'bookmarks';
 const BOOKMARK_MODEL_SIZE = 5;
-const LOAD_NEXT_PAGE = 200;
+const LOAD_NEXT_PAGE = 2000;
 const BOOKMARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor">< !--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M0 48V487.7C0 501.1 10.9 512 24.3 512c5 0 9.9-1.5 14-4.4L192 400 345.7 507.6c4.1 2.9 9 4.4 14 4.4c13.4 0 24.3-10.9 24.3-24.3V48c0-26.5-21.5-48-48-48H48C21.5 0 0 21.5 0 48z"/></svg>`;
 const BOOKMARK_CLASSNAME = 'bookmarked';
 const JUMP_TO_BOOKMARK_BUTTON_ID_NAME = 'jump-to-bookmark';
@@ -96,7 +96,7 @@ GM_addStyle(`
 
 .looking-for-the-bookmark {
   position: fixed;
-  top: 20px;
+  top: 2rem;
   width:auto;
   overflow: hidden;
   color: #EFEFEF;
@@ -184,6 +184,20 @@ function hideLookingForTheBookmarkMessage(updateMessage = '') {
   }, 100)
 }
 
+async function waitForLoadingComplete(retry = 1) {
+  if (retry > 10) {
+    console.error('wait for page loading timeout. nothing happened.');
+    return;
+  }
+
+  await sleep(500);
+  const models = queryAllModels();
+
+  if (models.length === 0) {
+    return waitForLoadingComplete(retry + 1);
+  }
+}
+
 async function findAndMarkBookmarkedModel(bookmarks) {
   await waitForLoadingComplete();
   const models = queryAllModels();
@@ -192,7 +206,7 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   }).filter(x => !x.innerText.includes('Early Access'));
   const bookmarkedModel = bookmarkedModels.shift() ?? null;
   if (!bookmarkedModel) {
-    return [null, models.pop(), models];
+    return [null, models.pop(), models.slice(0, BOOKMARK_MODEL_SIZE)];
   }
   const icon = createBookmarkIcon()
   icon.classList.add('bookmark-icon')
@@ -225,6 +239,13 @@ function activateButton(retry = 1) {
   }, 500)
 }
 
+
+// function scrollToBottom() {
+//   const height = $('main').getBoundingClientRect().height ?? j0
+//   const scrollArea = $('.scroll-area');
+//   scrollArea.scrollTop = scrollArea.scrollHeight;
+// }
+
 async function initialScrollToTheBookmark(retry = 1, newestModels = null) {
   await waitForLoadingComplete();
   const bookmarks = loadBookmarks();
@@ -250,12 +271,10 @@ async function initialScrollToTheBookmark(retry = 1, newestModels = null) {
     return
   }
 
-  const result = await findAndMarkBookmarkedModel(bookmarks);
-  const [bookmarkedModel, oldestModel, _newestModels] = result;
+  const [bookmarkedModel, oldestModel, _newestModels] = await findAndMarkBookmarkedModel(bookmarks);
   if (!bookmarkedModel) {
     console.info('the bookmarked model is not found in this page', retry);
     oldestModel.scrollIntoView();
-
     await sleep(1000);
     return await initialScrollToTheBookmark(retry + 1, retry === 1 ? _newestModels : newestModels);
   }
@@ -286,20 +305,6 @@ async function saveBookmark(newestModels = null) {
     return
   }
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(bookmarks));
-}
-
-async function waitForLoadingComplete(retry = 1) {
-  if (retry > 10) {
-    console.error('wait for page loading timeout. nothing happened.');
-    return;
-  }
-
-  await sleep(500);
-  const models = queryAllModels();
-
-  if (models.length === 0) {
-    return waitForLoadingComplete(retry + 1);
-  }
 }
 
 function forceMoveToBookmark() {
