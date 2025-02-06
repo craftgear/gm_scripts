@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.5.5
+// @version       1.6.0
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -25,6 +25,7 @@ const LOOKING_FOR_THE_BOOKMARK = `<svg xmlns="http://www.w3.org/2000/svg" width=
 const LOOKING_FOR_THE_BOOKMARK_CLASSNAME = 'looking-for-the-bookmark'
 
 let isHideEarlyAccessEnabled = GM_getValue("isHideEarlyAccessEnabled", false);
+let isMenuDarkBgForCardTitlesEnabled = GM_getValue("isMenuDarkBgForCardTitlesEnabled", false);
 
 GM_addStyle(`
 @keyframes pulse {
@@ -204,7 +205,7 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   const bookmarkedModels = models.filter((model) => {
     return bookmarks.some(bookmark => model.href.match(bookmark))
   }).filter(x => !x.innerText.includes('Early Access'));
-  const bookmarkedModel = bookmarkedModels.shift() ?? null;
+  const bookmarkedModel = bookmarkedModels.pop() ?? null;
   if (!bookmarkedModel) {
     return [null, models.pop(), models.slice(0, BOOKMARK_MODEL_SIZE)];
   }
@@ -359,26 +360,42 @@ function hideEarlyAccess() {
   }
 }
 
-function registerMenuToggleHideEarlyAccess() {
+
+function registerMenus() {
+  registerMenu('hide Early Access', isHideEarlyAccessEnabled, "isHideEarlyAccessEnabled");
+  registerMenu('dark bg for card titles', isMenuDarkBgForCardTitlesEnabled, "isMenuDarkBgForCardTitlesEnabled");
+}
+
+function registerMenu(menuLabel, state, stateName) {
   let currentCommandId;
   function updateMenu() {
     if (currentCommandId) {
       GM_unregisterMenuCommand(currentCommandId);
     }
-    const label = isHideEarlyAccessEnabled ? '☑ hide Early Access' : '□ hide Early Access';
+    const label = state ? `☑ ${menuLabel}` : `□ ${menuLabel}`;
     currentCommandId = GM_registerMenuCommand(label, toggleFeature);
   }
   function toggleFeature() {
-    isHideEarlyAccessEnabled = !isHideEarlyAccessEnabled;
-    GM_setValue("isHideEarlyAccessEnabled", isHideEarlyAccessEnabled); // 状態を保存
+    state = !state;
+    GM_setValue(stateName, state); // 状態を保存
     updateMenu();
   }
   updateMenu();
 }
 
+const darkBackgroundForModelCardTitle = () => {
+  const modelCardFooters = $$(
+    'div[class^="AspectRatioImageCard_footer__"]'
+  );
+  modelCardFooters.forEach((x) => {
+    x?.setAttribute('style', 'background-color: oklch(0% 0.156 0 / .5)');
+  });
+};
+
 let prevLocation = window.location.href;
 function observeLocationChange() {
   const observer = new MutationObserver(async () => {
+    isMenuDarkBgForCardTitlesEnabled && darkBackgroundForModelCardTitle();
     const currentLocation = window.location.href;
     if (prevLocation !== currentLocation) {
       prevLocation = currentLocation
@@ -398,8 +415,7 @@ function observeLocationChange() {
 
 async function main() {
   observeLocationChange()
-  // register a menu command
-  registerMenuToggleHideEarlyAccess()
+  registerMenus()
   // add a jump to bookmark button
   addScrollToBookmarkButton();
 
