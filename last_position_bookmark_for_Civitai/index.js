@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.6.0
+// @version       1.8.0
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -16,13 +16,14 @@
 
 const LOCAL_STORAGE_KEY = 'bookmarks';
 const BOOKMARK_MODEL_SIZE = 5;
-const LOAD_NEXT_PAGE = 2000;
+const LOAD_NEXT_PAGE = 1000;
 const BOOKMARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512" fill="currentColor">< !--!Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M0 48V487.7C0 501.1 10.9 512 24.3 512c5 0 9.9-1.5 14-4.4L192 400 345.7 507.6c4.1 2.9 9 4.4 14 4.4c13.4 0 24.3-10.9 24.3-24.3V48c0-26.5-21.5-48-48-48H48C21.5 0 0 21.5 0 48z"/></svg>`;
 const BOOKMARK_CLASSNAME = 'bookmarked';
 const JUMP_TO_BOOKMARK_BUTTON_ID_NAME = 'jump-to-bookmark';
 const MESSAGE_CONTAINER_CLASSNAME = 'message-container';
 const LOOKING_FOR_THE_BOOKMARK = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"> <circle cx="18" cy="12" r="0" fill="currentColor"> <animate attributeName="r" begin=".67" calcMode="spline" dur="1.5s" keySplines="0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8" repeatCount="indefinite" values="0;2;0;0" /> </circle> <circle cx="12" cy="12" r="0" fill="currentColor"> <animate attributeName="r" begin=".33" calcMode="spline" dur="1.5s" keySplines="0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8" repeatCount="indefinite" values="0;2;0;0" /> </circle> <circle cx="6" cy="12" r="0" fill="currentColor"> <animate attributeName="r" begin="0" calcMode="spline" dur="1.5s" keySplines="0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8;0.2 0.2 0.4 0.8" repeatCount="indefinite" values="0;2;0;0" /> </circle> </svg>`
 const LOOKING_FOR_THE_BOOKMARK_CLASSNAME = 'looking-for-the-bookmark'
+const LOADING_DIV_SELECTOR = 'div[style="grid-column: 1 / -1;"]'
 
 let isHideEarlyAccessEnabled = GM_getValue("isHideEarlyAccessEnabled", false);
 let isMenuDarkBgForCardTitlesEnabled = GM_getValue("isMenuDarkBgForCardTitlesEnabled", false);
@@ -140,7 +141,7 @@ function addAttribute(elem, key, value) {
 
 async function isSortByNewest() {
   await sleep();
-  const divs = Array.from(document.querySelectorAll('div')).filter(x => x.innerText === 'Newest');
+  const divs = [...(document.querySelectorAll('div button'))].filter(x => x.innerText.includes('Newest'));
   return divs.length > 0;
 }
 
@@ -202,10 +203,33 @@ async function waitForLoadingComplete(retry = 1) {
 async function findAndMarkBookmarkedModel(bookmarks) {
   await waitForLoadingComplete();
   const models = queryAllModels();
-  const bookmarkedModels = models.filter((model) => {
-    return bookmarks.some(bookmark => model.href.match(bookmark))
-  }).filter(x => !x.innerText.includes('Early Access'));
-  const bookmarkedModel = bookmarkedModels.pop() ?? null;
+
+  // sliding window of 2
+  const bookmarkPairs = bookmarks.reduce((acc, cur, index) => {
+    if (index === 0) {
+      return [[cur]];
+    }
+    const tail = acc.pop();
+    if (index === bookmarks.length - 1) {
+      return [...acc, [...tail, cur]]
+    }
+    return [...acc, [...tail, cur], [cur]];
+  }, [])
+  // find if 2 models are adjacent
+  const bookmarkedModel = bookmarkPairs.filter(([first, second]) => {
+    if (!first || !second) {
+      return false;
+    }
+    const firstBookmarkIndex = models.findIndex(model => model.href.match(first));
+    const secondBookmarkIndex = models.findIndex(model => model.href.match(second));
+    if (secondBookmarkIndex - firstBookmarkIndex === 1) {
+      return true;
+    }
+    return false
+  }).map(([first, _]) => {
+    return models.find(model => model.href.match(first));
+  }).pop();
+
   if (!bookmarkedModel) {
     return [null, models.pop(), models.slice(0, BOOKMARK_MODEL_SIZE)];
   }
@@ -220,6 +244,11 @@ async function findAndMarkBookmarkedModel(bookmarks) {
 
 function loadBookmarks() {
   return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
+}
+
+function deleteBookmarks() {
+  localStorage.removeItem(LOCAL_STORAGE_KEY)
+  window.location.reload();
 }
 
 function activateButton(retry = 1) {
@@ -241,12 +270,6 @@ function activateButton(retry = 1) {
 }
 
 
-// function scrollToBottom() {
-//   const height = $('main').getBoundingClientRect().height ?? j0
-//   const scrollArea = $('.scroll-area');
-//   scrollArea.scrollTop = scrollArea.scrollHeight;
-// }
-
 async function initialScrollToTheBookmark(retry = 1, newestModels = null) {
   await waitForLoadingComplete();
   const bookmarks = loadBookmarks();
@@ -255,6 +278,7 @@ async function initialScrollToTheBookmark(retry = 1, newestModels = null) {
     await saveBookmark();
     return;
   }
+
 
   showLookingForTheBookmarkMessage()
   updateLookingForTheBookmarkMessage(retry)
@@ -362,11 +386,16 @@ function hideEarlyAccess() {
 
 
 function registerMenus() {
-  registerMenu('hide Early Access', isHideEarlyAccessEnabled, "isHideEarlyAccessEnabled");
-  registerMenu('dark bg for card titles', isMenuDarkBgForCardTitlesEnabled, "isMenuDarkBgForCardTitlesEnabled");
+  registerMenu('delete the bookmark', () => deleteBookmarks());
+  registerToggleMenu('hide Early Access', isHideEarlyAccessEnabled, "isHideEarlyAccessEnabled");
+  registerToggleMenu('dark bg for card titles', isMenuDarkBgForCardTitlesEnabled, "isMenuDarkBgForCardTitlesEnabled");
 }
 
-function registerMenu(menuLabel, state, stateName) {
+function registerMenu(menuLabel, fn) {
+  currentCommandId = GM_registerMenuCommand(menuLabel, fn);
+}
+
+function registerToggleMenu(menuLabel, state, stateName) {
   let currentCommandId;
   function updateMenu() {
     if (currentCommandId) {
@@ -425,6 +454,9 @@ async function main() {
   if (!window.location.href.endsWith('models')) {
     return;
   }
+
+  await waitForLoadingComplete();
+
 
   if (! await isSortByNewest()) {
     console.info('this script should run only on newest sort mode');
