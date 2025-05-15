@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.8.0
+// @version       1.8.2
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -45,7 +45,7 @@ GM_addStyle(`
 }
 
 .bookmarked {
-  border: 6px solid coral !important;
+  border: 9px solid coral !important;
 }
 
 .bookmark-icon {
@@ -126,7 +126,7 @@ function $$(selector) {
   return document.querySelectorAll(selector)
 }
 
-function sleep(ms = 1000) {
+function sleep(ms = 200) {
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve(true);
@@ -140,7 +140,7 @@ function addAttribute(elem, key, value) {
 }
 
 async function isSortByNewest() {
-  await sleep();
+  await sleep(1000);
   const divs = [...(document.querySelectorAll('div button'))].filter(x => x.innerText.includes('Newest'));
   return divs.length > 0;
 }
@@ -192,8 +192,7 @@ async function waitForLoadingComplete(retry = 1) {
     return;
   }
 
-  await sleep(500);
-  const models = queryAllModels();
+  await sleep(100);
 
   if (models.length === 0) {
     return waitForLoadingComplete(retry + 1);
@@ -204,40 +203,30 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   await waitForLoadingComplete();
   const models = queryAllModels();
 
-  // sliding window of 2
-  const bookmarkPairs = bookmarks.reduce((acc, cur, index) => {
-    if (index === 0) {
-      return [[cur]];
-    }
-    const tail = acc.pop();
-    if (index === bookmarks.length - 1) {
-      return [...acc, [...tail, cur]]
-    }
-    return [...acc, [...tail, cur], [cur]];
-  }, [])
-  // find if 2 models are adjacent
-  const bookmarkedModel = bookmarkPairs.filter(([first, second]) => {
-    if (!first || !second) {
-      return false;
-    }
-    const firstBookmarkIndex = models.findIndex(model => model.href.match(first));
-    const secondBookmarkIndex = models.findIndex(model => model.href.match(second));
-    if (secondBookmarkIndex - firstBookmarkIndex === 1) {
-      return true;
+  // find if 2 models are found in the page
+  const foundBookmarks = bookmarks.reverse().filter(x => {
+    const bookmarkIndex = models.findIndex(model => model.href.match(x));
+    if (bookmarkIndex > 0) {
+      return true
     }
     return false
-  }).map(([first, _]) => {
-    return models.find(model => model.href.match(first));
-  }).pop();
+  }, []);
 
-  if (!bookmarkedModel) {
+  if (foundBookmarks.length === 0) {
     return [null, models.pop(), models.slice(0, BOOKMARK_MODEL_SIZE)];
   }
-  const icon = createBookmarkIcon()
-  icon.classList.add('bookmark-icon')
 
-  bookmarkedModel.parentNode.parentNode.appendChild(icon);
-  bookmarkedModel.parentNode.parentNode.classList.add(BOOKMARK_CLASSNAME);
+  foundBookmarks.map(x => {
+    const model = models.find(model => model.href.match(x));
+    return model
+  }).forEach((model, i) => {
+    const icon = createBookmarkIcon()
+    icon.classList.add('bookmark-icon')
+    model.parentNode.parentNode.appendChild(icon);
+    model.parentNode.parentNode.classList.add(BOOKMARK_CLASSNAME);
+  })
+
+  const bookmarkedModel = (foundBookmarks.length > 1) ? models.find(model => model.href.match(foundBookmarks[0])) : undefined;
 
   return [bookmarkedModel, null, models.slice(0, BOOKMARK_MODEL_SIZE)];
 }
@@ -300,7 +289,8 @@ async function initialScrollToTheBookmark(retry = 1, newestModels = null) {
   if (!bookmarkedModel) {
     console.info('the bookmarked model is not found in this page', retry);
     oldestModel.scrollIntoView();
-    await sleep(1000);
+
+    await sleep();
     return await initialScrollToTheBookmark(retry + 1, retry === 1 ? _newestModels : newestModels);
   }
 
