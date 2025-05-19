@@ -8,7 +8,7 @@
 // @grant         GM_getValue
 // @grant         GM_setValue
 // @run-at        document-idle
-// @version       1.8.2
+// @version       1.8.6
 // @license       MIT
 // @downloadURL   https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
 // @updateURL     https://update.greasyfork.org/scripts/505187/last%20position%20bookmark%20for%20Civitai.user.js
@@ -192,7 +192,8 @@ async function waitForLoadingComplete(retry = 1) {
     return;
   }
 
-  await sleep(100);
+  await sleep(500);
+  const models = queryAllModels();
 
   if (models.length === 0) {
     return waitForLoadingComplete(retry + 1);
@@ -203,7 +204,6 @@ async function findAndMarkBookmarkedModel(bookmarks) {
   await waitForLoadingComplete();
   const models = queryAllModels();
 
-  // find if 2 models are found in the page
   const foundBookmarks = bookmarks.reverse().filter(x => {
     const bookmarkIndex = models.findIndex(model => model.href.match(x));
     if (bookmarkIndex > 0) {
@@ -212,7 +212,8 @@ async function findAndMarkBookmarkedModel(bookmarks) {
     return false
   }, []);
 
-  if (foundBookmarks.length === 0) {
+  // find if 2 models are found in the page
+  if (foundBookmarks.length < 2) {
     return [null, models.pop(), models.slice(0, BOOKMARK_MODEL_SIZE)];
   }
 
@@ -226,7 +227,7 @@ async function findAndMarkBookmarkedModel(bookmarks) {
     model.parentNode.parentNode.classList.add(BOOKMARK_CLASSNAME);
   })
 
-  const bookmarkedModel = (foundBookmarks.length > 1) ? models.find(model => model.href.match(foundBookmarks[0])) : undefined;
+  const bookmarkedModel = models.find(model => model.href.match(foundBookmarks[0]))
 
   return [bookmarkedModel, null, models.slice(0, BOOKMARK_MODEL_SIZE)];
 }
