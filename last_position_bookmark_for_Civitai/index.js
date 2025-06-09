@@ -298,7 +298,7 @@ async function initialScrollToTheBookmark(retry = 1, newestModels = null) {
   hideLookingForTheBookmarkMessage('found the last bookmark')
 
   bookmarkedModel.scrollIntoView({ behavior: 'smooth' });
-  activateButton()
+  // activateButton()
   await saveBookmark(newestModels);
 
   console.info('moved to the last bookmark');
@@ -324,7 +324,7 @@ async function saveBookmark(newestModels = null) {
 }
 
 function forceMoveToBookmark() {
-  $(`.${BOOKMARK_CLASSNAME}`).scrollIntoView({ behavior: 'smooth' });
+  $(`:nth-last-child(1 of .${BOOKMARK_CLASSNAME})`).scrollIntoView({ behavior: 'smooth' });
 }
 
 function addScrollToBookmarkButton() {
